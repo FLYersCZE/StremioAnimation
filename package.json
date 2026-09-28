@@ -1,0 +1,12 @@
+{
+  "name": "stremio-animace",
+  "version": "1.0.0",
+  "description": "Animované filmy a seriály na hlavní ploše",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "stremio-addon-sdk": "^1.2.0"
+  }
+}
