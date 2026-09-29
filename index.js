@@ -2,9 +2,9 @@ const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
 
 const manifest = {
     id: "cz.flyerscze.animace",
-    version: "1.0.1",
+    version: "1.1.0",
     name: "🎬 Animace (Filmy + Seriály)",
-    description: "Animované filmy a seriály z Cinemety – Popular + Animation.",
+    description: "Popular animované filmy a seriály z Cinemety.",
     resources: ["catalog"],
     types: ["movie", "series"],
 
@@ -13,18 +13,31 @@ const manifest = {
             type: "movie",
             id: "cinemeta_animation_movies",
             name: "🧸 Animovaný svět: Filmy",
+
             extra: [
+                {
+                    name: "genre",
+                    options: ["Animation"],
+                    isRequired: true
+                },
                 {
                     name: "skip",
                     isRequired: false
                 }
             ]
         },
+
         {
             type: "series",
             id: "cinemeta_animation_series",
             name: "📺 Animovaný svět: Seriály",
+
             extra: [
+                {
+                    name: "genre",
+                    options: ["Animation"],
+                    isRequired: true
+                },
                 {
                     name: "skip",
                     isRequired: false
@@ -38,19 +51,22 @@ const builder = new addonBuilder(manifest);
 
 const CINEMETA = "https://v3-cinemeta.strem.io";
 
-async function nactiAnimace(type, skip) {
+async function nactiKatalog(type, genre, skip) {
 
-    let url;
+    const params = new URLSearchParams();
 
-    if (skip > 0) {
-        url =
-            `${CINEMETA}/catalog/${type}/top/genre=Animation&skip=${skip}.json`;
-    } else {
-        url =
-            `${CINEMETA}/catalog/${type}/top/genre=Animation.json`;
+    if (genre) {
+        params.set("genre", genre);
     }
 
-    console.log("Cinemeta URL:", url);
+    if (skip > 0) {
+        params.set("skip", String(skip));
+    }
+
+    const url =
+        `${CINEMETA}/catalog/${type}/top.json?${params.toString()}`;
+
+    console.log("Cinemeta:", url);
 
     try {
 
@@ -58,9 +74,9 @@ async function nactiAnimace(type, skip) {
 
         if (!response.ok) {
             console.error(
-                "Cinemeta HTTP chyba:",
-                response.status
+                `Cinemeta HTTP ${response.status}`
             );
+
             return [];
         }
 
@@ -71,7 +87,7 @@ async function nactiAnimace(type, skip) {
     } catch (error) {
 
         console.error(
-            "Chyba Cinemeta:",
+            "Chyba Cinemety:",
             error
         );
 
@@ -81,22 +97,30 @@ async function nactiAnimace(type, skip) {
 
 builder.defineCatalogHandler(async (args) => {
 
+    const genre =
+        args.extra?.genre || "Animation";
+
     const skip =
         Number(args.extra?.skip || 0);
 
+    console.log(
+        `Katalog: ${args.type}, genre=${genre}, skip=${skip}`
+    );
+
     if (
-        args.id === "cinemeta_animation_movies" &&
-        args.type === "movie"
+        args.type === "movie" &&
+        args.id === "cinemeta_animation_movies"
     ) {
 
         const metas =
-            await nactiAnimace(
+            await nactiKatalog(
                 "movie",
+                genre,
                 skip
             );
 
         console.log(
-            `FILMY | skip=${skip} | ${metas.length} položek`
+            `FILMY: ${metas.length} položek`
         );
 
         return {
@@ -105,18 +129,19 @@ builder.defineCatalogHandler(async (args) => {
     }
 
     if (
-        args.id === "cinemeta_animation_series" &&
-        args.type === "series"
+        args.type === "series" &&
+        args.id === "cinemeta_animation_series"
     ) {
 
         const metas =
-            await nactiAnimace(
+            await nactiKatalog(
                 "series",
+                genre,
                 skip
             );
 
         console.log(
-            `SERIÁLY | skip=${skip} | ${metas.length} položek`
+            `SERIÁLY: ${metas.length} položek`
         );
 
         return {
