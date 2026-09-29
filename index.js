@@ -24,10 +24,17 @@ const manifest = {
 const builder = new addonBuilder(manifest);
 
 async function ziskejCinemetaData(contentType) {
-    const url = `https://strem.io{contentType}/top/genre=Animation.json`;
+    const url = `https://v3-cinemeta.strem.io/catalog/${contentType}/top/genre=Animation.json`;
+
     try {
         const response = await fetch(url);
+
+        if (!response.ok) {
+            throw new Error(`Cinemeta HTTP ${response.status}`);
+        }
+
         const data = await response.json();
+
         return data.metas || [];
     } catch (error) {
         console.error("Chyba Cinemeta API:", error);
@@ -36,16 +43,36 @@ async function ziskejCinemetaData(contentType) {
 }
 
 builder.defineCatalogHandler(async (args) => {
-    if (args.type === "movie" && args.id === "cinemeta_animation_movies") {
+
+    if (
+        args.type === "movie" &&
+        args.id === "cinemeta_animation_movies"
+    ) {
         const data = await ziskejCinemetaData("movie");
-        return { metas: data };
+
+        return {
+            metas: data
+        };
     }
-    if (args.type === "series" && args.id === "cinemeta_animation_series") {
+
+    if (
+        args.type === "series" &&
+        args.id === "cinemeta_animation_series"
+    ) {
         const data = await ziskejCinemetaData("series");
-        return { metas: data };
+
+        return {
+            metas: data
+        };
     }
-    return { metas: [] };
+
+    return {
+        metas: []
+    };
 });
 
 const port = process.env.PORT || 7000;
-serveHTTP(builder.getInterface(), { port: port });
+
+serveHTTP(builder.getInterface(), {
+    port: port
+});
