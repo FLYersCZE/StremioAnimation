@@ -38,9 +38,13 @@ const builder = new addonBuilder(manifest);
 
 const CINEMETA = "https://v3-cinemeta.strem.io";
 
-async function nactiKatalog(contentType, skip) {
+// Cache výsledků, aby se stejné tituly
+// nemusely kontrolovat znovu.
+const animeCache = new Map();
+
+async function nactiKatalog(type, skip) {
     const url =
-        `${CINEMETA}/catalog/${contentType}/top/genre=Animation.json?skip=${skip}`;
+        `${CINEMETA}/catalog/${type}/top/genre=Animation.json?skip=${skip}`;
 
     try {
         const response = await fetch(url);
@@ -54,19 +58,28 @@ async function nactiKatalog(contentType, skip) {
         return data.metas || [];
 
     } catch (error) {
-        console.error("Chyba Cinemeta katalogu:", error);
+        console.error("Chyba katalogu:", error);
         return [];
     }
 }
 
-async function jeJaponskeAnime(contentType, meta) {
+
+// Kontrola jednoho titulu.
+async function jeAnime(type, meta) {
+
+    if (animeCache.has(meta.id)) {
+        return animeCache.get(meta.id);
+    }
+
     try {
+
         const url =
-            `${CINEMETA}/meta/${contentType}/${meta.id}.json`;
+            `${CINEMETA}/meta/${type}/${meta.id}.json`;
 
         const response = await fetch(url);
 
         if (!response.ok) {
+            animeCache.set(meta.id, false);
             return false;
         }
 
@@ -74,132 +87,145 @@ async function jeJaponskeAnime(contentType, meta) {
         const detail = data.meta;
 
         if (!detail) {
+            animeCache.set(meta.id, false);
             return false;
         }
 
-        const country = String(detail.country || "").toLowerCase();
-        const language = String(detail.language || "").toLowerCase();
+        const country =
+            String(detail.country || "").toLowerCase();
 
-        if (
+        const language =
+            String(detail.language || "").toLowerCase();
+
+        const result =
             country.includes("japan") ||
             country.includes("japonsko") ||
-            language.includes("japanese")
-        ) {
-            return true;
-        }
+            language.includes("japanese");
 
-        return false;
+        animeCache.set(meta.id, result);
+
+        return result;
 
     } catch (error) {
+
+        // Když detail nejde načíst,
+        // titul ponecháme.
+        animeCache.set(meta.id, false);
+
         return false;
     }
 }
 
-async function filtrujAnime(contentType, metas) {
 
-    const vysledky = await Promise.all(
-        metas.map(async (meta) => {
+// Kontrola titulů po menších dávkách.
+// Nezatíží Render stovkami požadavků současně.
+async function filtrujAnime(type, metas) {
 
-            const anime = await jeJaponskeAnime(
-                contentType,
-                meta
+    const vysledky = [];
+
+    const BATCH_SIZE = 10;
+
+    for (
+        let i = 0;
+        i < metas.length;
+        i += BATCH_SIZE
+    ) {
+
+        const batch =
+            metas.slice(i, i + BATCH_SIZE);
+
+        const kontrola =
+            await Promise.all(
+                batch.map(async meta => {
+
+                    const anime =
+                        await jeAnime(type, meta);
+
+                    return {
+                        meta,
+                        anime
+                    };
+                })
             );
 
-            return anime ? null : meta;
-        })
-    );
+        for (const item of kontrola) {
 
-    return vysledky.filter(Boolean);
+            if (!item.anime) {
+                vysledky.push(item.meta);
+            }
+        }
+    }
+
+    return vysledky;
 }
 
-async function vytvorStranku(contentType, requestedSkip) {
+
+async function vytvorStranku(type, requestedSkip) {
 
     const PAGE_SIZE = 100;
 
-    let vsechnyVhodne = [];
-
-    let cinemetaSkip = 0;
-
     /*
-     * Načítáme další stránky Cinemety,
-     * dokud nemáme dost ne-japonských titulů
-     * pro požadovanou stránku Stremia.
+     * Nejdříve načteme stránku Popular + Animation.
      */
-    while (
-        vsechnyVhodne.length < requestedSkip + PAGE_SIZE &&
-        cinemetaSkip < 2000
-    ) {
+    const metas =
+        await nactiKatalog(type, requestedSkip);
 
-        const metas = await nactiKatalog(
-            contentType,
-            cinemetaSkip
-        );
-
-        if (!metas.length) {
-            break;
-        }
-
-        const vhodne = await filtrujAnime(
-            contentType,
-            metas
-        );
-
-        vsechnyVhodne.push(...vhodne);
-
-        /*
-         * Další stránka Cinemety.
-         */
-        cinemetaSkip += 100;
-
-        /*
-         * Konec zdroje.
-         */
-        if (metas.length < 100) {
-            break;
-        }
+    if (!metas.length) {
+        return [];
     }
 
-    return vsechnyVhodne.slice(
-        requestedSkip,
-        requestedSkip + PAGE_SIZE
-    );
+    /*
+     * Odstraníme japonské anime.
+     *
+     * Kontrola probíhá po dávkách,
+     * aby Render nezkolaboval.
+     */
+    const filtrovane =
+        await filtrujAnime(type, metas);
+
+    return filtrovane.slice(0, PAGE_SIZE);
 }
+
 
 builder.defineCatalogHandler(async (args) => {
 
-    const skip = Number(args.extra?.skip || 0);
+    const skip =
+        Number(args.extra?.skip || 0);
 
     if (
         args.type === "movie" &&
         args.id === "cinemeta_animation_movies"
     ) {
 
-        const metas = await vytvorStranku(
-            "movie",
-            skip
-        );
+        const metas =
+            await vytvorStranku(
+                "movie",
+                skip
+            );
 
         console.log(
-            `Animované filmy: skip=${skip}, počet=${metas.length}`
+            `Filmy: skip=${skip}, počet=${metas.length}`
         );
 
         return {
             metas
         };
     }
+
 
     if (
         args.type === "series" &&
         args.id === "cinemeta_animation_series"
     ) {
 
-        const metas = await vytvorStranku(
-            "series",
-            skip
-        );
+        const metas =
+            await vytvorStranku(
+                "series",
+                skip
+            );
 
         console.log(
-            `Animované seriály: skip=${skip}, počet=${metas.length}`
+            `Seriály: skip=${skip}, počet=${metas.length}`
         );
 
         return {
@@ -207,11 +233,20 @@ builder.defineCatalogHandler(async (args) => {
         };
     }
 
+
     return {
         metas: []
     };
 });
 
-const port = process.env.PORT || 7000;
 
-serveHTTP(builder.getInterface(), {
+const port =
+    process.env.PORT || 7000;
+
+
+serveHTTP(
+    builder.getInterface(),
+    {
+        port
+    }
+);
