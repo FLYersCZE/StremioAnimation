@@ -1,7 +1,7 @@
 const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
 
 const manifest = {
-    id: "org.cinemeta.animation.github",
+    id: "cz.flyerscze.animace",
     version: "1.0.0",
     name: "🎬 Animace (Filmy + Seriály)",
     description: "Zobrazí animované filmy a seriály ze sekce Objevit na domovské obrazovce.",
@@ -16,7 +16,7 @@ const manifest = {
         {
             type: "series",
             id: "cinemeta_animation_series",
-            name: "🧸 Animovaný svět: Seriály"
+            name: "📺 Animovaný svět: Seriály"
         }
     ]
 };
@@ -30,21 +30,22 @@ async function ziskejCinemetaData(contentType) {
         const data = await response.json();
         return data.metas || [];
     } catch (error) {
-        console.error(`Chyba při stahování dat pro ${contentType}:`, error);
+        console.error("Chyba Cinemeta API:", error);
         return [];
     }
 }
 
 builder.defineCatalogHandler(async (args) => {
     if (args.type === "movie" && args.id === "cinemeta_animation_movies") {
-        return { metas: await ziskejCinemetaData("movie") };
+        const data = await ziskejCinemetaData("movie");
+        return { metas: data };
     }
     if (args.type === "series" && args.id === "cinemeta_animation_series") {
-        return { metas: await ziskejCinemetaData("series") };
+        const data = await ziskejCinemetaData("series");
+        return { metas: data };
     }
     return { metas: [] };
 });
 
 const port = process.env.PORT || 7000;
 serveHTTP(builder.getInterface(), { port: port });
-console.log(`🚀 Doplněk běží na portu ${port}`);
