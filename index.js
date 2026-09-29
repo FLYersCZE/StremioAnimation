@@ -4,7 +4,7 @@ const manifest = {
     id: "cz.flyerscze.animace",
     version: "1.0.0",
     name: "🎬 Animace (Filmy + Seriály)",
-    description: "Velký katalog populárních animovaných filmů a seriálů bez japonského anime.",
+    description: "Animované filmy a seriály z Cinemeta – Popular + Animation.",
     resources: ["catalog"],
     types: ["movie", "series"],
 
@@ -13,6 +13,7 @@ const manifest = {
             type: "movie",
             id: "cinemeta_animation_movies",
             name: "🧸 Animovaný svět: Filmy",
+
             extra: [
                 {
                     name: "skip",
@@ -20,10 +21,12 @@ const manifest = {
                 }
             ]
         },
+
         {
             type: "series",
             id: "cinemeta_animation_series",
             name: "📺 Animovaný svět: Seriály",
+
             extra: [
                 {
                     name: "skip",
@@ -38,19 +41,26 @@ const builder = new addonBuilder(manifest);
 
 const CINEMETA = "https://v3-cinemeta.strem.io";
 
-// Cache výsledků, aby se stejné tituly
-// nemusely kontrolovat znovu.
-const animeCache = new Map();
+async function nactiAnimace(type, skip) {
 
-async function nactiKatalog(type, skip) {
     const url =
         `${CINEMETA}/catalog/${type}/top/genre=Animation.json?skip=${skip}`;
 
+    console.log(
+        `Cinemeta požadavek: ${type}, skip=${skip}`
+    );
+
     try {
+
         const response = await fetch(url);
 
         if (!response.ok) {
-            throw new Error(`Cinemeta HTTP ${response.status}`);
+
+            console.error(
+                `Cinemeta HTTP chyba: ${response.status}`
+            );
+
+            return [];
         }
 
         const data = await response.json();
@@ -58,139 +68,26 @@ async function nactiKatalog(type, skip) {
         return data.metas || [];
 
     } catch (error) {
-        console.error("Chyba katalogu:", error);
+
+        console.error(
+            "Chyba při načítání Cinemety:",
+            error
+        );
+
         return [];
     }
 }
-
-
-// Kontrola jednoho titulu.
-async function jeAnime(type, meta) {
-
-    if (animeCache.has(meta.id)) {
-        return animeCache.get(meta.id);
-    }
-
-    try {
-
-        const url =
-            `${CINEMETA}/meta/${type}/${meta.id}.json`;
-
-        const response = await fetch(url);
-
-        if (!response.ok) {
-            animeCache.set(meta.id, false);
-            return false;
-        }
-
-        const data = await response.json();
-        const detail = data.meta;
-
-        if (!detail) {
-            animeCache.set(meta.id, false);
-            return false;
-        }
-
-        const country =
-            String(detail.country || "").toLowerCase();
-
-        const language =
-            String(detail.language || "").toLowerCase();
-
-        const result =
-            country.includes("japan") ||
-            country.includes("japonsko") ||
-            language.includes("japanese");
-
-        animeCache.set(meta.id, result);
-
-        return result;
-
-    } catch (error) {
-
-        // Když detail nejde načíst,
-        // titul ponecháme.
-        animeCache.set(meta.id, false);
-
-        return false;
-    }
-}
-
-
-// Kontrola titulů po menších dávkách.
-// Nezatíží Render stovkami požadavků současně.
-async function filtrujAnime(type, metas) {
-
-    const vysledky = [];
-
-    const BATCH_SIZE = 10;
-
-    for (
-        let i = 0;
-        i < metas.length;
-        i += BATCH_SIZE
-    ) {
-
-        const batch =
-            metas.slice(i, i + BATCH_SIZE);
-
-        const kontrola =
-            await Promise.all(
-                batch.map(async meta => {
-
-                    const anime =
-                        await jeAnime(type, meta);
-
-                    return {
-                        meta,
-                        anime
-                    };
-                })
-            );
-
-        for (const item of kontrola) {
-
-            if (!item.anime) {
-                vysledky.push(item.meta);
-            }
-        }
-    }
-
-    return vysledky;
-}
-
-
-async function vytvorStranku(type, requestedSkip) {
-
-    const PAGE_SIZE = 100;
-
-    /*
-     * Nejdříve načteme stránku Popular + Animation.
-     */
-    const metas =
-        await nactiKatalog(type, requestedSkip);
-
-    if (!metas.length) {
-        return [];
-    }
-
-    /*
-     * Odstraníme japonské anime.
-     *
-     * Kontrola probíhá po dávkách,
-     * aby Render nezkolaboval.
-     */
-    const filtrovane =
-        await filtrujAnime(type, metas);
-
-    return filtrovane.slice(0, PAGE_SIZE);
-}
-
 
 builder.defineCatalogHandler(async (args) => {
 
-    const skip =
-        Number(args.extra?.skip || 0);
+    let skip = 0;
+
+    if (
+        args.extra &&
+        args.extra.skip !== undefined
+    ) {
+        skip = Number(args.extra.skip) || 0;
+    }
 
     if (
         args.type === "movie" &&
@@ -198,20 +95,19 @@ builder.defineCatalogHandler(async (args) => {
     ) {
 
         const metas =
-            await vytvorStranku(
+            await nactiAnimace(
                 "movie",
                 skip
             );
 
         console.log(
-            `Filmy: skip=${skip}, počet=${metas.length}`
+            `Animované filmy: skip=${skip}, počet=${metas.length}`
         );
 
         return {
             metas
         };
     }
-
 
     if (
         args.type === "series" &&
@@ -219,13 +115,13 @@ builder.defineCatalogHandler(async (args) => {
     ) {
 
         const metas =
-            await vytvorStranku(
+            await nactiAnimace(
                 "series",
                 skip
             );
 
         console.log(
-            `Seriály: skip=${skip}, počet=${metas.length}`
+            `Animované seriály: skip=${skip}, počet=${metas.length}`
         );
 
         return {
@@ -233,16 +129,13 @@ builder.defineCatalogHandler(async (args) => {
         };
     }
 
-
     return {
         metas: []
     };
 });
 
-
 const port =
     process.env.PORT || 7000;
-
 
 serveHTTP(
     builder.getInterface(),
