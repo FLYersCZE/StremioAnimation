@@ -2,7 +2,7 @@ const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
 
 const manifest = {
     id: "cz.flyerscze.animace",
-    version: "1.1.0",
+    version: "1.2.0",
     name: "🎬 Animace (Filmy + Seriály)",
     description: "Popular animované filmy a seriály z Cinemety.",
     resources: ["catalog"],
@@ -13,7 +13,6 @@ const manifest = {
             type: "movie",
             id: "cinemeta_animation_movies",
             name: "🧸 Animovaný svět: Filmy",
-
             extra: [
                 {
                     name: "genre",
@@ -22,6 +21,19 @@ const manifest = {
                 },
                 {
                     name: "skip",
+                    options: [
+                        "0",
+                        "30",
+                        "60",
+                        "90",
+                        "120",
+                        "150",
+                        "180",
+                        "210",
+                        "240",
+                        "270",
+                        "300"
+                    ],
                     isRequired: false
                 }
             ]
@@ -31,7 +43,6 @@ const manifest = {
             type: "series",
             id: "cinemeta_animation_series",
             name: "📺 Animovaný svět: Seriály",
-
             extra: [
                 {
                     name: "genre",
@@ -40,6 +51,19 @@ const manifest = {
                 },
                 {
                     name: "skip",
+                    options: [
+                        "0",
+                        "30",
+                        "60",
+                        "90",
+                        "120",
+                        "150",
+                        "180",
+                        "210",
+                        "240",
+                        "270",
+                        "300"
+                    ],
                     isRequired: false
                 }
             ]
@@ -51,28 +75,30 @@ const builder = new addonBuilder(manifest);
 
 const CINEMETA = "https://v3-cinemeta.strem.io";
 
-async function nactiKatalog(type, genre, skip) {
+async function nactiKatalog(type, skip) {
 
-    const params = new URLSearchParams();
-
-    if (genre) {
-        params.set("genre", genre);
-    }
+    let url;
 
     if (skip > 0) {
-        params.set("skip", String(skip));
+
+        url =
+            `${CINEMETA}/catalog/${type}/top/genre=Animation/skip=${skip}.json`;
+
+    } else {
+
+        url =
+            `${CINEMETA}/catalog/${type}/top/genre=Animation.json`;
+
     }
 
-    const url =
-        `${CINEMETA}/catalog/${type}/top.json?${params.toString()}`;
-
-    console.log("Cinemeta:", url);
+    console.log("Cinemeta URL:", url);
 
     try {
 
         const response = await fetch(url);
 
         if (!response.ok) {
+
             console.error(
                 `Cinemeta HTTP ${response.status}`
             );
@@ -81,6 +107,10 @@ async function nactiKatalog(type, genre, skip) {
         }
 
         const data = await response.json();
+
+        console.log(
+            `Cinemeta vrátila ${data.metas?.length || 0} položek`
+        );
 
         return data.metas || [];
 
@@ -97,14 +127,11 @@ async function nactiKatalog(type, genre, skip) {
 
 builder.defineCatalogHandler(async (args) => {
 
-    const genre =
-        args.extra?.genre || "Animation";
-
     const skip =
         Number(args.extra?.skip || 0);
 
     console.log(
-        `Katalog: ${args.type}, genre=${genre}, skip=${skip}`
+        `Požadavek: ${args.type}, skip=${skip}`
     );
 
     if (
@@ -115,13 +142,8 @@ builder.defineCatalogHandler(async (args) => {
         const metas =
             await nactiKatalog(
                 "movie",
-                genre,
                 skip
             );
-
-        console.log(
-            `FILMY: ${metas.length} položek`
-        );
 
         return {
             metas
@@ -136,13 +158,8 @@ builder.defineCatalogHandler(async (args) => {
         const metas =
             await nactiKatalog(
                 "series",
-                genre,
                 skip
             );
-
-        console.log(
-            `SERIÁLY: ${metas.length} položek`
-        );
 
         return {
             metas
