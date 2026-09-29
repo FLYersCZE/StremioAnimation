@@ -2,9 +2,9 @@ const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
 
 const manifest = {
     id: "cz.flyerscze.animace",
-    version: "1.0.0",
+    version: "1.0.1",
     name: "🎬 Animace (Filmy + Seriály)",
-    description: "Animované filmy a seriály z Cinemeta – Popular + Animation.",
+    description: "Animované filmy a seriály z Cinemety – Popular + Animation.",
     resources: ["catalog"],
     types: ["movie", "series"],
 
@@ -13,7 +13,6 @@ const manifest = {
             type: "movie",
             id: "cinemeta_animation_movies",
             name: "🧸 Animovaný svět: Filmy",
-
             extra: [
                 {
                     name: "skip",
@@ -21,12 +20,10 @@ const manifest = {
                 }
             ]
         },
-
         {
             type: "series",
             id: "cinemeta_animation_series",
             name: "📺 Animovaný svět: Seriály",
-
             extra: [
                 {
                     name: "skip",
@@ -43,23 +40,27 @@ const CINEMETA = "https://v3-cinemeta.strem.io";
 
 async function nactiAnimace(type, skip) {
 
-    const url =
-        `${CINEMETA}/catalog/${type}/top/genre=Animation.json?skip=${skip}`;
+    let url;
 
-    console.log(
-        `Cinemeta požadavek: ${type}, skip=${skip}`
-    );
+    if (skip > 0) {
+        url =
+            `${CINEMETA}/catalog/${type}/top/genre=Animation&skip=${skip}.json`;
+    } else {
+        url =
+            `${CINEMETA}/catalog/${type}/top/genre=Animation.json`;
+    }
+
+    console.log("Cinemeta URL:", url);
 
     try {
 
         const response = await fetch(url);
 
         if (!response.ok) {
-
             console.error(
-                `Cinemeta HTTP chyba: ${response.status}`
+                "Cinemeta HTTP chyba:",
+                response.status
             );
-
             return [];
         }
 
@@ -70,7 +71,7 @@ async function nactiAnimace(type, skip) {
     } catch (error) {
 
         console.error(
-            "Chyba při načítání Cinemety:",
+            "Chyba Cinemeta:",
             error
         );
 
@@ -80,18 +81,12 @@ async function nactiAnimace(type, skip) {
 
 builder.defineCatalogHandler(async (args) => {
 
-    let skip = 0;
+    const skip =
+        Number(args.extra?.skip || 0);
 
     if (
-        args.extra &&
-        args.extra.skip !== undefined
-    ) {
-        skip = Number(args.extra.skip) || 0;
-    }
-
-    if (
-        args.type === "movie" &&
-        args.id === "cinemeta_animation_movies"
+        args.id === "cinemeta_animation_movies" &&
+        args.type === "movie"
     ) {
 
         const metas =
@@ -101,7 +96,7 @@ builder.defineCatalogHandler(async (args) => {
             );
 
         console.log(
-            `Animované filmy: skip=${skip}, počet=${metas.length}`
+            `FILMY | skip=${skip} | ${metas.length} položek`
         );
 
         return {
@@ -110,8 +105,8 @@ builder.defineCatalogHandler(async (args) => {
     }
 
     if (
-        args.type === "series" &&
-        args.id === "cinemeta_animation_series"
+        args.id === "cinemeta_animation_series" &&
+        args.type === "series"
     ) {
 
         const metas =
@@ -121,7 +116,7 @@ builder.defineCatalogHandler(async (args) => {
             );
 
         console.log(
-            `Animované seriály: skip=${skip}, počet=${metas.length}`
+            `SERIÁLY | skip=${skip} | ${metas.length} položek`
         );
 
         return {
