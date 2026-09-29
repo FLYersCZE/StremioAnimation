@@ -35,7 +35,25 @@ async function ziskejCinemetaData(contentType) {
 
         const data = await response.json();
 
-        return data.metas || [];
+        return (data.metas || []).filter(meta => {
+            const countries = meta.country || meta.countries || [];
+
+            const countryList = Array.isArray(countries)
+                ? countries
+                : [countries];
+
+            return !countryList.some(country => {
+                const value = String(country).toLowerCase().trim();
+
+                return (
+                    value === "japan" ||
+                    value === "japonsko" ||
+                    value === "jp" ||
+                    value.includes("japan")
+                );
+            });
+        });
+
     } catch (error) {
         console.error("Chyba Cinemeta API:", error);
         return [];
