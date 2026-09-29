@@ -4,9 +4,10 @@ const manifest = {
     id: "cz.flyerscze.animace",
     version: "1.0.0",
     name: "🎬 Animace (Filmy + Seriály)",
-    description: "Zobrazí animované filmy a seriály bez japonského anime.",
+    description: "Velký katalog populárních animovaných filmů a seriálů bez japonského anime.",
     resources: ["catalog"],
     types: ["movie", "series"],
+
     catalogs: [
         {
             type: "movie",
@@ -15,7 +16,6 @@ const manifest = {
             extra: [
                 {
                     name: "skip",
-                    options: ["0", "100", "200", "300", "400", "500"],
                     isRequired: false
                 }
             ]
@@ -27,7 +27,6 @@ const manifest = {
             extra: [
                 {
                     name: "skip",
-                    options: ["0", "100", "200", "300", "400", "500"],
                     isRequired: false
                 }
             ]
@@ -37,9 +36,11 @@ const manifest = {
 
 const builder = new addonBuilder(manifest);
 
-async function nactiCinemetaStranku(contentType, skip) {
+const CINEMETA = "https://v3-cinemeta.strem.io";
+
+async function nactiKatalog(contentType, skip) {
     const url =
-        `https://v3-cinemeta.strem.io/catalog/${contentType}/top/genre=Animation.json?skip=${skip}`;
+        `${CINEMETA}/catalog/${contentType}/top/genre=Animation.json?skip=${skip}`;
 
     try {
         const response = await fetch(url);
@@ -58,12 +59,12 @@ async function nactiCinemetaStranku(contentType, skip) {
     }
 }
 
-async function jeAnime(contentType, meta) {
+async function jeJaponskeAnime(contentType, meta) {
     try {
-        const detailUrl =
-            `https://v3-cinemeta.strem.io/meta/${contentType}/${meta.id}.json`;
+        const url =
+            `${CINEMETA}/meta/${contentType}/${meta.id}.json`;
 
-        const response = await fetch(detailUrl);
+        const response = await fetch(url);
 
         if (!response.ok) {
             return false;
@@ -79,13 +80,15 @@ async function jeAnime(contentType, meta) {
         const country = String(detail.country || "").toLowerCase();
         const language = String(detail.language || "").toLowerCase();
 
-        return (
+        if (
             country.includes("japan") ||
             country.includes("japonsko") ||
-            country.includes("japan") ||
-            language.includes("japanese") ||
-            language.includes("japan")
-        );
+            language.includes("japanese")
+        ) {
+            return true;
+        }
+
+        return false;
 
     } catch (error) {
         return false;
@@ -94,88 +97,94 @@ async function jeAnime(contentType, meta) {
 
 async function filtrujAnime(contentType, metas) {
 
-    const results = await Promise.all(
+    const vysledky = await Promise.all(
         metas.map(async (meta) => {
 
-            const anime = await jeAnime(contentType, meta);
+            const anime = await jeJaponskeAnime(
+                contentType,
+                meta
+            );
 
-            if (anime) {
-                return null;
-            }
-
-            return meta;
+            return anime ? null : meta;
         })
     );
 
-    return results.filter(meta => meta !== null);
+    return vysledky.filter(Boolean);
 }
 
-async function ziskejStranku(contentType, requestedSkip) {
+async function vytvorStranku(contentType, requestedSkip) {
 
-    const potrebujeme = 100;
+    const PAGE_SIZE = 100;
 
-    let vhodneTituly = [];
-    let sourceSkip = 0;
+    let vsechnyVhodne = [];
+
+    let cinemetaSkip = 0;
 
     /*
-     * Protože část titulů odstraníme jako japonské anime,
-     * načítáme Cinemetu po 100 a sbíráme dostatek vhodných titulů.
+     * Načítáme další stránky Cinemety,
+     * dokud nemáme dost ne-japonských titulů
+     * pro požadovanou stránku Stremia.
      */
     while (
-        vhodneTituly.length < requestedSkip + potrebujeme &&
-        sourceSkip <= 900
+        vsechnyVhodne.length < requestedSkip + PAGE_SIZE &&
+        cinemetaSkip < 2000
     ) {
 
-        const metas = await nactiCinemetaStranku(
+        const metas = await nactiKatalog(
             contentType,
-            sourceSkip
+            cinemetaSkip
         );
 
         if (!metas.length) {
             break;
         }
 
-        const filtrovane = await filtrujAnime(
+        const vhodne = await filtrujAnime(
             contentType,
             metas
         );
 
-        vhodneTituly.push(...filtrovane);
-
-        sourceSkip += 100;
+        vsechnyVhodne.push(...vhodne);
 
         /*
-         * Pokud Cinemeta vrátila méně než 100 položek,
-         * pravděpodobně jsme na konci katalogu.
+         * Další stránka Cinemety.
+         */
+        cinemetaSkip += 100;
+
+        /*
+         * Konec zdroje.
          */
         if (metas.length < 100) {
             break;
         }
     }
 
-    return vhodneTituly.slice(
+    return vsechnyVhodne.slice(
         requestedSkip,
-        requestedSkip + potrebujeme
+        requestedSkip + PAGE_SIZE
     );
 }
 
 builder.defineCatalogHandler(async (args) => {
 
-    const requestedSkip =
-        parseInt(args.extra?.skip || "0", 10);
+    const skip = Number(args.extra?.skip || 0);
 
     if (
         args.type === "movie" &&
         args.id === "cinemeta_animation_movies"
     ) {
 
-        const data = await ziskejStranku(
+        const metas = await vytvorStranku(
             "movie",
-            requestedSkip
+            skip
+        );
+
+        console.log(
+            `Animované filmy: skip=${skip}, počet=${metas.length}`
         );
 
         return {
-            metas: data
+            metas
         };
     }
 
@@ -184,13 +193,17 @@ builder.defineCatalogHandler(async (args) => {
         args.id === "cinemeta_animation_series"
     ) {
 
-        const data = await ziskejStranku(
+        const metas = await vytvorStranku(
             "series",
-            requestedSkip
+            skip
+        );
+
+        console.log(
+            `Animované seriály: skip=${skip}, počet=${metas.length}`
         );
 
         return {
-            metas: data
+            metas
         };
     }
 
@@ -202,5 +215,3 @@ builder.defineCatalogHandler(async (args) => {
 const port = process.env.PORT || 7000;
 
 serveHTTP(builder.getInterface(), {
-    port: port
-});
